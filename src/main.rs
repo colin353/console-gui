@@ -39,19 +39,22 @@ impl epi::App for App {
 
                 for cmd in &["JOIN", "PRS", "CAL", "SHCT"] {
                     ui.allocate_ui(egui::Vec2::new(20.0, spacing), |ui| {
-                        ui.centered_and_justified(|ui| {
-                            let mut frame = egui::Frame::none();
-                            if cmd == &"JOIN" {
-                                frame = frame.stroke(egui::Stroke::new(0.25, egui::Color32::WHITE));
-                            };
+                        let padding = 10.0;
+                        let text_space = cmd.len() as f32 * 25.0 + 2.0 * padding;
 
-                            frame.show(ui, |ui| {
-                                let desc = egui::Label::new(
-                                    egui::RichText::new(cmd.to_string()).monospace(),
-                                );
-                                ui.add(desc);
-                            });
-                        })
+                        ui.add_space((spacing - text_space) / 2.0);
+                        let mut frame = egui::Frame::none();
+                        frame.margin = egui::Vec2::new(5.0, padding);
+                        if cmd == &"JOIN" {
+                            frame = frame.stroke(egui::Stroke::new(0.25, egui::Color32::WHITE));
+                        };
+
+                        frame.show(ui, |ui| {
+                            let desc =
+                                egui::Label::new(egui::RichText::new(cmd.to_string()).monospace());
+                            ui.add(desc);
+                        });
+                        ui.add_space((spacing - text_space) / 2.0);
                     });
                 }
             });
