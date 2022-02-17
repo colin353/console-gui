@@ -1,6 +1,8 @@
 use eframe::egui::{FontDefinitions, FontFamily};
 use eframe::{egui, epi};
 
+const ZOOM_COLOR: egui::Color32 = egui::Color32::from_rgb(0x2D, 0x8C, 0xFF);
+
 struct App {}
 
 impl epi::App for App {
@@ -62,10 +64,114 @@ impl epi::App for App {
         egui::CentralPanel::default()
             .frame(egui::Frame::none())
             .show(ctx, |ui| {
-                ui.heading("testing");
-                ui.heading("code review");
+                ui.allocate_ui(
+                    egui::Vec2::new(ui.available_width(), ui.available_height() - 37.0),
+                    |ui| {
+                        shortcut(ui);
+                        ui.add_space(ui.available_height());
+                    },
+                );
+
+                footer(ui);
             });
     }
+}
+
+fn home_pane(ui: &mut egui::Ui) {
+    let mut frame = egui::Frame::none();
+    frame.margin = egui::Vec2::new(20.0, 20.0);
+    frame.show(ui, |ui| {
+        ui.set_clip_rect(ui.max_rect());
+        ui.horizontal(|ui| {
+            let mut frame = egui::Frame::none();
+            frame.margin = egui::Vec2::new(5.0, 5.0);
+            frame = frame.stroke(egui::Stroke::new(0.25, egui::Color32::WHITE));
+            frame.show(ui, |ui| {
+                let desc = egui::Label::new(egui::RichText::new("-30M").monospace());
+                ui.add(desc);
+            });
+
+            ui.add_space(20.0);
+            ui.heading("Search Sync Extremely Long String");
+        });
+
+        ui.add_space(10.0);
+
+        ui.horizontal(|ui| {
+            let mut frame = egui::Frame::none();
+            frame.margin = egui::Vec2::new(5.0, 5.0);
+            frame = frame.stroke(egui::Stroke::new(0.25, ZOOM_COLOR));
+            frame.fill = ZOOM_COLOR;
+            frame.show(ui, |ui| {
+                let desc = egui::Label::new(
+                    egui::RichText::new("ZOOM")
+                        .monospace()
+                        .color(egui::Color32::BLACK),
+                );
+                ui.add(desc);
+            });
+
+            ui.add_space(20.0);
+            ui.heading("2:00pm - 3:00pm");
+        });
+
+        ui.add_space(40.0);
+
+        ui.horizontal(|ui| {
+            let mut frame = egui::Frame::none();
+            frame.margin = egui::Vec2::new(5.0, 5.0);
+            frame = frame.stroke(egui::Stroke::new(0.25, egui::Color32::WHITE));
+            frame.show(ui, |ui| {
+                let desc = egui::Label::new(egui::RichText::new("+ 2H").monospace());
+                ui.add(desc);
+            });
+
+            ui.add_space(20.0);
+            ui.add(egui::Label::new(
+                egui::RichText::new("@look commented").heading(),
+            ));
+        });
+    });
+}
+
+fn shortcut(ui: &mut egui::Ui) {
+    let shortcuts = &[&["guvcview", "zoom"]];
+
+    let mut frame = egui::Frame::none();
+    frame = frame.stroke(egui::Stroke::new(0.25, egui::Color32::WHITE));
+    frame.show(ui, |ui| {
+        ui.horizontal(|ui| {
+            let mut frame = egui::Frame::none();
+            frame = frame.stroke(egui::Stroke::new(0.25, egui::Color32::WHITE));
+            frame.fill = egui::Color32::WHITE;
+            frame.show(ui, |ui| {
+                let desc = egui::Label::new(
+                    egui::RichText::new(" 1 ")
+                        .monospace()
+                        .color(egui::Color32::BLACK),
+                );
+                ui.add(desc);
+            });
+        });
+        ui.add_space(ui.available_height());
+    });
+}
+
+fn footer(ui: &mut egui::Ui) {
+    ui.horizontal(|ui| {
+        let mut frame = egui::Frame::none();
+        frame.margin = egui::Vec2::new(5.0, 5.0);
+        frame = frame.stroke(egui::Stroke::new(0.25, egui::Color32::WHITE));
+        frame.fill = egui::Color32::WHITE;
+        frame.show(ui, |ui| {
+            let desc = egui::Label::new(
+                egui::RichText::new(" Feb 17  2:35PM ")
+                    .monospace()
+                    .color(egui::Color32::BLACK),
+            );
+            ui.add(desc);
+        });
+    });
 }
 
 fn main() {
