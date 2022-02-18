@@ -1,5 +1,3 @@
-cargo-features = [ "edition2021" ]
-
 [package]
 name = "console-gui"
 version = "0.1.0"
@@ -10,4 +8,4 @@ edition = "2021"
 [dependencies]
 egui = "0.16.1"
 eframe = { version = "0.16.0" }
-
+inputbot = "0.5.1"
