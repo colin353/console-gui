@@ -1,9 +1,14 @@
 use eframe::egui::{FontDefinitions, FontFamily};
 use eframe::{egui, epi};
+use tokio::runtime::Runtime;
 
 use std::sync::{Arc, Mutex};
 
+mod calendar;
+mod github;
+
 const ZOOM_COLOR: egui::Color32 = egui::Color32::from_rgb(0x2D, 0x8C, 0xFF);
+const BG: egui::Color32 = egui::Color32::BLACK;
 const FG: egui::Color32 = egui::Color32::GRAY;
 
 const STROKE: f32 = 1.0;
@@ -13,14 +18,46 @@ struct App {
     data: Arc<Mutex<AppState>>,
 }
 
+pub struct CalendarEvent {
+    title: String,
+    time: String,
+    start: i64,
+    zoom_url: Option<String>,
+}
+
+impl CalendarEvent {
+    fn as_eta(&self) -> String {
+        let now = chrono::prelude::Utc::now().timestamp();
+        let eta = now - self.start;
+        let eta_sign = eta.signum();
+        let sign = if eta_sign == 1 { "-" } else { "+" };
+        let eta = eta.abs();
+
+        // ETA > 12 hours, show at least 1 day
+        const MINUTE: i64 = 60;
+        const HOUR: i64 = 60 * MINUTE;
+        if eta > 24 * HOUR {
+            return format!("{}{:<2}d", sign, eta / (24 * HOUR));
+        } else if eta > 12 * HOUR {
+            return format!("{} 1d", sign);
+        } else if eta > HOUR {
+            return format!("{}{:02}h", sign, eta / HOUR);
+        } else {
+            return format!("{}{:02}m", sign, eta / MINUTE);
+        }
+    }
+}
+
 enum PageState {
     Home,
     Shortcuts { selected: Option<usize> },
 }
 
-struct AppState {
+pub struct AppState {
     page: PageState,
     frame: Option<epi::Frame>,
+    clock: String,
+    calendar: Option<CalendarEvent>,
 }
 
 impl AppState {
@@ -28,7 +65,15 @@ impl AppState {
         Self {
             page: PageState::Home,
             frame: None,
+            clock: Self::clock_time(),
+            calendar: None,
         }
+    }
+
+    fn clock_time() -> String {
+        chrono::prelude::Local::now()
+            .format(" %h %d  %l:%M%p ")
+            .to_string()
     }
 
     fn home_pane(&self, ui: &mut egui::Ui) {
@@ -37,40 +82,54 @@ impl AppState {
         frame.show(ui, |ui| {
             let clip_rect = ui.max_rect().expand(5.0);
             ui.set_clip_rect(clip_rect);
-            ui.horizontal(|ui| {
-                let mut frame = egui::Frame::none();
-                frame.margin = egui::Vec2::new(5.0, 5.0);
-                frame = frame.stroke(egui::Stroke::new(STROKE, FG));
-                frame.show(ui, |ui| {
-                    let desc = egui::Label::new(egui::RichText::new("-30m").monospace());
-                    ui.add(desc);
+            if let Some(calendar_event) = self.calendar.as_ref() {
+                ui.horizontal(|ui| {
+                    let mut frame = egui::Frame::none();
+                    frame.margin = egui::Vec2::new(5.0, 5.0);
+                    frame = frame.stroke(egui::Stroke::new(STROKE, FG));
+                    frame.show(ui, |ui| {
+                        let desc = egui::Label::new(
+                            egui::RichText::new(calendar_event.as_eta()).monospace(),
+                        );
+                        ui.add(desc);
+                    });
+
+                    ui.add_space(20.0);
+                    ui.heading(&calendar_event.title);
                 });
 
-                ui.add_space(20.0);
-                ui.heading("Search Sync Extremely Long String");
-            });
+                ui.add_space(10.0);
 
-            ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    let mut frame = egui::Frame::none();
+                    frame.margin = egui::Vec2::new(5.0, 5.0);
 
-            ui.horizontal(|ui| {
-                let mut frame = egui::Frame::none();
-                frame.margin = egui::Vec2::new(5.0, 5.0);
-                frame = frame.stroke(egui::Stroke::new(STROKE, ZOOM_COLOR));
-                frame.fill = ZOOM_COLOR;
-                frame.show(ui, |ui| {
-                    let desc = egui::Label::new(
-                        egui::RichText::new("ZOOM")
-                            .monospace()
-                            .color(egui::Color32::BLACK),
-                    );
-                    ui.add(desc);
+                    if let Some(_zoom_url) = calendar_event.zoom_url.as_ref() {
+                        frame = frame.stroke(egui::Stroke::new(STROKE, ZOOM_COLOR));
+                        frame.fill = ZOOM_COLOR;
+                        frame.show(ui, |ui| {
+                            let desc = egui::Label::new(
+                                egui::RichText::new("ZOOM")
+                                    .monospace()
+                                    .color(egui::Color32::BLACK),
+                            );
+                            ui.add(desc);
+                        });
+                    } else {
+                        frame = frame.stroke(egui::Stroke::new(STROKE, BG));
+                        frame.fill = BG;
+                        frame.show(ui, |ui| {
+                            let desc = egui::Label::new(egui::RichText::new("    ").monospace());
+                            ui.add(desc);
+                        });
+                    }
+
+                    ui.add_space(20.0);
+                    ui.heading(&calendar_event.time);
                 });
 
-                ui.add_space(20.0);
-                ui.heading("2:00pm - 3:00pm");
-            });
-
-            ui.add_space(40.0);
+                ui.add_space(40.0);
+            }
 
             ui.horizontal(|ui| {
                 let mut frame = egui::Frame::none();
@@ -172,7 +231,7 @@ impl AppState {
             frame.fill = FG;
             frame.show(ui, |ui| {
                 let desc = egui::Label::new(
-                    egui::RichText::new(" Feb 17  2:35PM ")
+                    egui::RichText::new(&self.clock)
                         .monospace()
                         .color(egui::Color32::BLACK),
                 );
@@ -194,6 +253,11 @@ impl App {
         Self {
             data: Arc::new(Mutex::new(AppState::new())),
         }
+    }
+
+    async fn start_async(&self) {
+        let data = self.data.clone();
+        calendar::run(data).await
     }
 
     fn bindkeys(&self) {
@@ -313,10 +377,14 @@ impl epi::App for App {
     }
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let options = eframe::NativeOptions::default();
 
     let app = App::new();
     app.bindkeys();
+
+    let _app = app.clone();
+    tokio::spawn(async move { _app.start_async().await });
     eframe::run_native(Box::new(app), options);
 }
