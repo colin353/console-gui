@@ -25,25 +25,29 @@ pub struct CalendarEvent {
     zoom_url: Option<String>,
 }
 
+fn rounding_div(a: i64, b: i64) -> i64 {
+    (a as f64 / b as f64).round() as i64
+}
+
 impl CalendarEvent {
     fn as_eta(&self) -> String {
         let now = chrono::prelude::Utc::now().timestamp();
         let eta = now - self.start;
-        let eta_sign = eta.signum();
-        let sign = if eta_sign == 1 { "-" } else { "+" };
+
+        let sign = if eta.signum() == 1 { "+" } else { "-" };
         let eta = eta.abs();
 
         // ETA > 12 hours, show at least 1 day
         const MINUTE: i64 = 60;
         const HOUR: i64 = 60 * MINUTE;
         if eta > 24 * HOUR {
-            return format!("{}{:<2}d", sign, eta / (24 * HOUR));
+            return format!("{}{:>2}d", sign, rounding_div(eta, 24 * HOUR));
         } else if eta > 12 * HOUR {
             return format!("{} 1d", sign);
         } else if eta > HOUR {
-            return format!("{}{:02}h", sign, eta / HOUR);
+            return format!("{}{:>2}h", sign, rounding_div(eta, HOUR));
         } else {
-            return format!("{}{:02}m", sign, eta / MINUTE);
+            return format!("{}{:>2}m", sign, rounding_div(eta, MINUTE));
         }
     }
 }
@@ -72,7 +76,7 @@ impl AppState {
 
     fn clock_time() -> String {
         chrono::prelude::Local::now()
-            .format(" %h %d  %l:%M%p ")
+            .format(" %h %d  %l:%M%P ")
             .to_string()
     }
 
@@ -136,7 +140,7 @@ impl AppState {
                 frame.margin = egui::Vec2::new(5.0, 5.0);
                 frame = frame.stroke(egui::Stroke::new(STROKE, FG));
                 frame.show(ui, |ui| {
-                    let desc = egui::Label::new(egui::RichText::new("+ 2H").monospace());
+                    let desc = egui::Label::new(egui::RichText::new("+ 2h").monospace());
                     ui.add(desc);
                 });
 
@@ -257,7 +261,24 @@ impl App {
 
     async fn start_async(&self) {
         let data = self.data.clone();
-        calendar::run(data).await
+        tokio::spawn(async move {
+            calendar::run(data).await;
+        });
+        let data = self.data.clone();
+        tokio::spawn(async move {
+            github::run(data).await;
+        });
+
+        // Timer to refresh UI
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
+        loop {
+            interval.tick().await;
+            let mut _data = self.data.lock().unwrap();
+            if let Some(frame) = _data.frame.as_ref() {
+                frame.request_repaint();
+            }
+            _data.clock = AppState::clock_time();
+        }
     }
 
     fn bindkeys(&self) {
