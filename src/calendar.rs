@@ -1,6 +1,4 @@
-use google_calendar3::api::Channel;
 use google_calendar3::CalendarHub;
-use google_calendar3::{Error, Result};
 
 pub use crate::{AppState, CalendarEvent};
 use std::sync::{Arc, Mutex};
@@ -115,9 +113,7 @@ pub async fn run(data: Arc<Mutex<AppState>>) {
             });
         }
 
-        if output.is_some() {
-            data.lock().unwrap().calendar = output;
-        }
+        data.lock().unwrap().calendar = output;
 
         interval.tick().await;
     }
