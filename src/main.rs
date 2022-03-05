@@ -3,8 +3,13 @@ use eframe::{egui, epi};
 
 use std::sync::{Arc, Mutex};
 
+mod calendar;
+mod github;
+
 const ZOOM_COLOR: egui::Color32 = egui::Color32::from_rgb(0x2D, 0x8C, 0xFF);
+const BG: egui::Color32 = egui::Color32::BLACK;
 const FG: egui::Color32 = egui::Color32::GRAY;
+const FG_MUTED: egui::Color32 = egui::Color32::from_rgb(80, 80, 80);
 
 const STROKE: f32 = 1.0;
 
@@ -13,14 +18,62 @@ struct App {
     data: Arc<Mutex<AppState>>,
 }
 
+pub struct CalendarEvent {
+    title: String,
+    time: String,
+    start: i64,
+    zoom_url: Option<String>,
+}
+
+pub struct GitHubNotification {
+    title: String,
+    action: String,
+    repository: String,
+    time: i64,
+}
+
+fn rounding_div(a: i64, b: i64) -> i64 {
+    (a as f64 / b as f64).round() as i64
+}
+
+fn eta(time: i64) -> String {
+    let now = chrono::prelude::Utc::now().timestamp();
+    let eta = now - time;
+
+    let sign = if eta.signum() == 1 { "+" } else { "-" };
+    let eta = eta.abs();
+
+    // ETA > 12 hours, show at least 1 day
+    const MINUTE: i64 = 60;
+    const HOUR: i64 = 60 * MINUTE;
+    if eta > 24 * HOUR {
+        return format!("{}{:>2}d", sign, rounding_div(eta, 24 * HOUR));
+    } else if eta > 12 * HOUR {
+        return format!("{} 1d", sign);
+    } else if eta > HOUR {
+        return format!("{}{:>2}h", sign, rounding_div(eta, HOUR));
+    } else {
+        return format!("{}{:>2}m", sign, rounding_div(eta, MINUTE));
+    }
+}
+
+impl CalendarEvent {
+    fn as_eta(&self) -> String {
+        eta(self.start)
+    }
+}
+
 enum PageState {
     Home,
     Shortcuts { selected: Option<usize> },
 }
 
-struct AppState {
+pub struct AppState {
     page: PageState,
     frame: Option<epi::Frame>,
+    clock: String,
+    calendar: Option<CalendarEvent>,
+    notifications: Vec<GitHubNotification>,
 }
 
 impl AppState {
@@ -28,7 +81,16 @@ impl AppState {
         Self {
             page: PageState::Home,
             frame: None,
+            clock: Self::clock_time(),
+            calendar: None,
+            notifications: Vec::new(),
         }
+    }
+
+    fn clock_time() -> String {
+        chrono::prelude::Local::now()
+            .format(" %h %d  %l:%M%P ")
+            .to_string()
     }
 
     fn home_pane(&self, ui: &mut egui::Ui) {
@@ -37,55 +99,85 @@ impl AppState {
         frame.show(ui, |ui| {
             let clip_rect = ui.max_rect().expand(5.0);
             ui.set_clip_rect(clip_rect);
-            ui.horizontal(|ui| {
-                let mut frame = egui::Frame::none();
-                frame.margin = egui::Vec2::new(5.0, 5.0);
-                frame = frame.stroke(egui::Stroke::new(STROKE, FG));
-                frame.show(ui, |ui| {
-                    let desc = egui::Label::new(egui::RichText::new("-30m").monospace());
-                    ui.add(desc);
+            if let Some(calendar_event) = self.calendar.as_ref() {
+                ui.horizontal(|ui| {
+                    let mut frame = egui::Frame::none();
+                    frame.margin = egui::Vec2::new(5.0, 5.0);
+                    frame = frame.stroke(egui::Stroke::new(STROKE, FG));
+                    frame.show(ui, |ui| {
+                        let desc = egui::Label::new(
+                            egui::RichText::new(calendar_event.as_eta()).monospace(),
+                        );
+                        ui.add(desc);
+                    });
+
+                    ui.add_space(20.0);
+                    ui.heading(&calendar_event.title);
                 });
 
-                ui.add_space(20.0);
-                ui.heading("Search Sync Extremely Long String");
-            });
+                ui.add_space(10.0);
 
-            ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    let mut frame = egui::Frame::none();
+                    frame.margin = egui::Vec2::new(5.0, 5.0);
 
-            ui.horizontal(|ui| {
-                let mut frame = egui::Frame::none();
-                frame.margin = egui::Vec2::new(5.0, 5.0);
-                frame = frame.stroke(egui::Stroke::new(STROKE, ZOOM_COLOR));
-                frame.fill = ZOOM_COLOR;
-                frame.show(ui, |ui| {
-                    let desc = egui::Label::new(
-                        egui::RichText::new("ZOOM")
-                            .monospace()
-                            .color(egui::Color32::BLACK),
-                    );
-                    ui.add(desc);
+                    if let Some(_zoom_url) = calendar_event.zoom_url.as_ref() {
+                        frame = frame.stroke(egui::Stroke::new(STROKE, ZOOM_COLOR));
+                        frame.fill = ZOOM_COLOR;
+                        frame.show(ui, |ui| {
+                            let desc = egui::Label::new(
+                                egui::RichText::new("ZOOM")
+                                    .monospace()
+                                    .color(egui::Color32::BLACK),
+                            );
+                            ui.add(desc);
+                        });
+                    } else {
+                        frame = frame.stroke(egui::Stroke::new(STROKE, BG));
+                        frame.fill = BG;
+                        frame.show(ui, |ui| {
+                            let desc = egui::Label::new(egui::RichText::new("    ").monospace());
+                            ui.add(desc);
+                        });
+                    }
+
+                    ui.add_space(20.0);
+                    ui.heading(&calendar_event.time);
                 });
 
-                ui.add_space(20.0);
-                ui.heading("2:00pm - 3:00pm");
-            });
+                ui.add_space(40.0);
+            }
 
-            ui.add_space(40.0);
+            for notification in &self.notifications {
+                ui.horizontal(|ui| {
+                    let mut frame = egui::Frame::none();
+                    frame.margin = egui::Vec2::new(5.0, 5.0);
+                    frame = frame.stroke(egui::Stroke::new(STROKE, FG));
+                    frame.show(ui, |ui| {
+                        let desc = egui::Label::new(
+                            egui::RichText::new(eta(notification.time)).monospace(),
+                        );
+                        ui.add(desc);
+                    });
 
-            ui.horizontal(|ui| {
-                let mut frame = egui::Frame::none();
-                frame.margin = egui::Vec2::new(5.0, 5.0);
-                frame = frame.stroke(egui::Stroke::new(STROKE, FG));
-                frame.show(ui, |ui| {
-                    let desc = egui::Label::new(egui::RichText::new("+ 2H").monospace());
-                    ui.add(desc);
+                    ui.add_space(10.0);
+                    ui.add(egui::Label::new(
+                        egui::RichText::new(&notification.title).heading(),
+                    ));
+                });
+                ui.horizontal(|ui| {
+                    ui.add(egui::Label::new(
+                        egui::RichText::new(format!(
+                            "{} in {}",
+                            notification.action, notification.repository
+                        ))
+                        .color(FG_MUTED)
+                        .heading(),
+                    ));
                 });
 
-                ui.add_space(20.0);
-                ui.add(egui::Label::new(
-                    egui::RichText::new("@look commented").heading(),
-                ));
-            });
+                ui.add_space(10.0);
+            }
         });
     }
 
@@ -172,7 +264,7 @@ impl AppState {
             frame.fill = FG;
             frame.show(ui, |ui| {
                 let desc = egui::Label::new(
-                    egui::RichText::new(" Feb 17  2:35PM ")
+                    egui::RichText::new(&self.clock)
                         .monospace()
                         .color(egui::Color32::BLACK),
                 );
@@ -183,7 +275,15 @@ impl AppState {
 
     fn commands(&self) -> &[&str] {
         match self.page {
-            PageState::Home => &["JOIN", "PRS", "CAL", "SHCT"],
+            PageState::Home => {
+                if let Some(cal) = &self.calendar {
+                    if cal.zoom_url.is_some() {
+                        return &["JOIN", "PRS", "CAL", "SHCT"];
+                    }
+                }
+
+                &["", "PRS", "CAL", "SHCT"]
+            }
             PageState::Shortcuts { .. } => &["1", "2", "3", "BACK"],
         }
     }
@@ -193,6 +293,28 @@ impl App {
     fn new() -> Self {
         Self {
             data: Arc::new(Mutex::new(AppState::new())),
+        }
+    }
+
+    async fn start_async(&self) {
+        let data = self.data.clone();
+        tokio::spawn(async move {
+            calendar::run(data).await;
+        });
+        let data = self.data.clone();
+        tokio::spawn(async move {
+            github::run(data).await;
+        });
+
+        // Timer to refresh UI
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
+        loop {
+            interval.tick().await;
+            let mut _data = self.data.lock().unwrap();
+            if let Some(frame) = _data.frame.as_ref() {
+                frame.request_repaint();
+            }
+            _data.clock = AppState::clock_time();
         }
     }
 
@@ -261,7 +383,7 @@ impl epi::App for App {
 
     fn update(&mut self, ctx: &egui::CtxRef, _frame: &epi::Frame) {
         egui::SidePanel::right("right_panel")
-            .frame(egui::Frame::none())
+            .frame(egui::Frame::none().fill(BG))
             .default_width(30.0)
             .max_width(30.0)
             .min_width(30.0)
@@ -293,30 +415,34 @@ impl epi::App for App {
             });
 
         egui::CentralPanel::default()
-            .frame(egui::Frame::none())
+            .frame(egui::Frame::none().fill(BG))
             .show(ctx, |ui| {
                 let app_data = self.data.lock().unwrap();
 
-                ui.allocate_ui(
+                let (rect, _) = ui.allocate_exact_size(
                     egui::Vec2::new(ui.available_width(), ui.available_height() - 37.0),
-                    |ui| {
-                        match app_data.page {
-                            PageState::Home => app_data.home_pane(ui),
-                            PageState::Shortcuts { selected: _ } => app_data.shortcut(ui),
-                        }
-                        ui.add_space(ui.available_height());
-                    },
+                    egui::Sense::hover(),
                 );
-
                 app_data.footer(ui);
+
+                let mut content_ui = ui.child_ui(rect, egui::Layout::top_down(egui::Align::Min));
+                match app_data.page {
+                    PageState::Home => app_data.home_pane(&mut content_ui),
+                    PageState::Shortcuts { selected: _ } => app_data.shortcut(&mut content_ui),
+                }
+                content_ui.add_space(content_ui.available_height());
             });
     }
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let options = eframe::NativeOptions::default();
 
     let app = App::new();
     app.bindkeys();
+
+    let _app = app.clone();
+    tokio::spawn(async move { _app.start_async().await });
     eframe::run_native(Box::new(app), options);
 }
