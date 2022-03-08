@@ -5,17 +5,17 @@ use crate::{AppState, PageState};
 impl AppState {
     pub fn handle_kbd_pull_requests(&mut self, key: keyboard::Key) {
         match key {
-            keyboard::Key::LCD_1 => {
+            keyboard::Key::LCD1 => {
                 // Join
             }
-            keyboard::Key::LCD_2 => {
+            keyboard::Key::LCD2 => {
                 // PRs
                 self.page = PageState::PullRequests;
             }
-            keyboard::Key::LCD_3 => {
+            keyboard::Key::LCD3 => {
                 // Calendar
             }
-            keyboard::Key::LCD_4 => {
+            keyboard::Key::LCD4 => {
                 // Shortcuts
                 self.page = PageState::Shortcuts { selected: None };
             }

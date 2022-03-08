@@ -10,7 +10,7 @@ impl AppState {
         };
 
         match key {
-            keyboard::Key::LCD_1 => {
+            keyboard::Key::LCD1 => {
                 if let Some(s) = selected {
                     match s {
                         0 => println!("guvcview"),
@@ -22,7 +22,7 @@ impl AppState {
                     self.page = PageState::Shortcuts { selected: Some(0) };
                 }
             }
-            keyboard::Key::LCD_2 => {
+            keyboard::Key::LCD2 => {
                 if let Some(s) = selected {
                     match s {
                         0 => println!("zoom"),
@@ -34,7 +34,7 @@ impl AppState {
                     self.page = PageState::Shortcuts { selected: Some(1) };
                 }
             }
-            keyboard::Key::LCD_3 => {
+            keyboard::Key::LCD3 => {
                 if let Some(s) = selected {
                     match s {
                         0 => println!("screenshot"),
@@ -53,7 +53,7 @@ impl AppState {
                     self.page = PageState::Home;
                 }
             }
-            keyboard::Key::LCD_4 => {
+            keyboard::Key::LCD4 => {
                 // Shortcuts
                 self.page = PageState::Home;
             }
