@@ -5,16 +5,15 @@ use std::sync::{Arc, Mutex};
 
 mod calendar;
 mod github;
+mod keyboard;
+mod style;
 
-const ZOOM_COLOR: egui::Color32 = egui::Color32::from_rgb(0x2D, 0x8C, 0xFF);
-const BG: egui::Color32 = egui::Color32::BLACK;
-const FG: egui::Color32 = egui::Color32::GRAY;
-const FG_MUTED: egui::Color32 = egui::Color32::from_rgb(80, 80, 80);
-
-const STROKE: f32 = 1.0;
+mod home;
+mod pull_requests;
+mod shortcuts;
 
 #[derive(Clone)]
-struct App {
+pub struct App {
     data: Arc<Mutex<AppState>>,
 }
 
@@ -32,40 +31,10 @@ pub struct GitHubNotification {
     time: i64,
 }
 
-fn rounding_div(a: i64, b: i64) -> i64 {
-    (a as f64 / b as f64).round() as i64
-}
-
-fn eta(time: i64) -> String {
-    let now = chrono::prelude::Utc::now().timestamp();
-    let eta = now - time;
-
-    let sign = if eta.signum() == 1 { "+" } else { "-" };
-    let eta = eta.abs();
-
-    // ETA > 12 hours, show at least 1 day
-    const MINUTE: i64 = 60;
-    const HOUR: i64 = 60 * MINUTE;
-    if eta > 24 * HOUR {
-        return format!("{}{:>2}d", sign, rounding_div(eta, 24 * HOUR));
-    } else if eta > 12 * HOUR {
-        return format!("{} 1d", sign);
-    } else if eta > HOUR {
-        return format!("{}{:>2}h", sign, rounding_div(eta, HOUR));
-    } else {
-        return format!("{}{:>2}m", sign, rounding_div(eta, MINUTE));
-    }
-}
-
-impl CalendarEvent {
-    fn as_eta(&self) -> String {
-        eta(self.start)
-    }
-}
-
 enum PageState {
     Home,
     Shortcuts { selected: Option<usize> },
+    PullRequests,
 }
 
 pub struct AppState {
@@ -93,175 +62,12 @@ impl AppState {
             .to_string()
     }
 
-    fn home_pane(&self, ui: &mut egui::Ui) {
-        let mut frame = egui::Frame::none();
-        frame.margin = egui::Vec2::new(20.0, 20.0);
-        frame.show(ui, |ui| {
-            let clip_rect = ui.max_rect().expand(5.0);
-            ui.set_clip_rect(clip_rect);
-            if let Some(calendar_event) = self.calendar.as_ref() {
-                ui.horizontal(|ui| {
-                    let mut frame = egui::Frame::none();
-                    frame.margin = egui::Vec2::new(5.0, 5.0);
-                    frame = frame.stroke(egui::Stroke::new(STROKE, FG));
-                    frame.show(ui, |ui| {
-                        let desc = egui::Label::new(
-                            egui::RichText::new(calendar_event.as_eta()).monospace(),
-                        );
-                        ui.add(desc);
-                    });
-
-                    ui.add_space(20.0);
-                    ui.heading(&calendar_event.title);
-                });
-
-                ui.add_space(10.0);
-
-                ui.horizontal(|ui| {
-                    let mut frame = egui::Frame::none();
-                    frame.margin = egui::Vec2::new(5.0, 5.0);
-
-                    if let Some(_zoom_url) = calendar_event.zoom_url.as_ref() {
-                        frame = frame.stroke(egui::Stroke::new(STROKE, ZOOM_COLOR));
-                        frame.fill = ZOOM_COLOR;
-                        frame.show(ui, |ui| {
-                            let desc = egui::Label::new(
-                                egui::RichText::new("ZOOM")
-                                    .monospace()
-                                    .color(egui::Color32::BLACK),
-                            );
-                            ui.add(desc);
-                        });
-                    } else {
-                        frame = frame.stroke(egui::Stroke::new(STROKE, BG));
-                        frame.fill = BG;
-                        frame.show(ui, |ui| {
-                            let desc = egui::Label::new(egui::RichText::new("    ").monospace());
-                            ui.add(desc);
-                        });
-                    }
-
-                    ui.add_space(20.0);
-                    ui.heading(&calendar_event.time);
-                });
-
-                ui.add_space(40.0);
-            }
-
-            for notification in &self.notifications {
-                ui.horizontal(|ui| {
-                    let mut frame = egui::Frame::none();
-                    frame.margin = egui::Vec2::new(5.0, 5.0);
-                    frame = frame.stroke(egui::Stroke::new(STROKE, FG));
-                    frame.show(ui, |ui| {
-                        let desc = egui::Label::new(
-                            egui::RichText::new(eta(notification.time)).monospace(),
-                        );
-                        ui.add(desc);
-                    });
-
-                    ui.add_space(10.0);
-                    ui.add(egui::Label::new(
-                        egui::RichText::new(&notification.title).heading(),
-                    ));
-                });
-                ui.horizontal(|ui| {
-                    ui.add(egui::Label::new(
-                        egui::RichText::new(format!(
-                            "{} in {}",
-                            notification.action, notification.repository
-                        ))
-                        .color(FG_MUTED)
-                        .heading(),
-                    ));
-                });
-
-                ui.add_space(10.0);
-            }
-        });
-    }
-
-    fn shortcut(&self, ui: &mut egui::Ui) {
-        let shortcuts = &[
-            &["guvcview", "zoom", "screenshot"],
-            &["slack", "something", "shutdown"],
-        ];
-
-        let chunk_size = ui.available_height() / 4.0;
-
-        let selected = match self.page {
-            PageState::Shortcuts { selected } => selected,
-            _ => None,
-        };
-
-        for (idx_outer, shortcut_chunk) in shortcuts.iter().enumerate() {
-            ui.allocate_ui(egui::Vec2::new(ui.available_width(), chunk_size), |ui| {
-                let mut frame = egui::Frame::none();
-                frame = frame.stroke(egui::Stroke::new(STROKE, FG));
-                frame.show(ui, |ui| {
-                    let mut frame = egui::Frame::none();
-                    frame = frame.stroke(egui::Stroke::new(STROKE, FG));
-
-                    let mut fg = FG;
-                    let mut bg = egui::Color32::BLACK;
-                    if selected.is_some() {
-                        fg = bg;
-                        bg = FG;
-                    }
-
-                    frame.fill = fg;
-                    frame.show(ui, |ui| {
-                        let desc = egui::Label::new(
-                            egui::RichText::new(format!(" {} ", idx_outer + 1))
-                                .monospace()
-                                .color(bg),
-                        );
-                        ui.add(desc);
-                    });
-
-                    for (idx, shortcut) in shortcut_chunk.iter().enumerate() {
-                        ui.horizontal(|ui| {
-                            ui.add_space(39.);
-
-                            let mut frame = egui::Frame::none();
-                            frame = frame.stroke(egui::Stroke::new(STROKE, FG));
-
-                            let mut fg = FG;
-                            let mut bg = egui::Color32::BLACK;
-                            if let Some(sel_idx) = selected {
-                                if sel_idx == idx_outer {
-                                    fg = bg;
-                                    bg = FG;
-                                }
-                            }
-
-                            frame.fill = bg;
-                            frame.show(ui, |ui| {
-                                let desc = egui::Label::new(
-                                    egui::RichText::new(format!(" {} ", idx + 1))
-                                        .monospace()
-                                        .color(fg),
-                                );
-                                ui.add(desc);
-                            });
-
-                            ui.heading(shortcut.to_string());
-                            ui.add_space(ui.available_width() - 10.);
-                        });
-                    }
-
-                    ui.add_space(ui.available_height());
-                });
-            });
-        }
-    }
-
     fn footer(&self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             let mut frame = egui::Frame::none();
             frame.margin = egui::Vec2::new(5.0, 5.0);
-            frame = frame.stroke(egui::Stroke::new(STROKE, FG));
-            frame.fill = FG;
+            frame = frame.stroke(egui::Stroke::new(style::STROKE, style::FG));
+            frame.fill = style::FG;
             frame.show(ui, |ui| {
                 let desc = egui::Label::new(
                     egui::RichText::new(&self.clock)
@@ -285,6 +91,7 @@ impl AppState {
                 &["", "PRS", "CAL", "SHCT"]
             }
             PageState::Shortcuts { .. } => &["1", "2", "3", "BACK"],
+            PageState::PullRequests => &["IPR", "SUB", "REV"],
         }
     }
 }
@@ -320,35 +127,19 @@ impl App {
 
     fn bindkeys(&self) {
         let _self = self.clone();
-        inputbot::KeybdKey::LShiftKey.bind(move || {
-            let mut state = _self.data.lock().unwrap();
-            match state.page {
-                PageState::Home => state.page = PageState::Shortcuts { selected: None },
-                PageState::Shortcuts { .. } => state.page = PageState::Home,
-            };
+        std::thread::spawn(move || {
+            keyboard::handle_input_events(move |key| {
+                let mut state = _self.data.lock().unwrap();
+                match state.page {
+                    PageState::Home => state.handle_kbd_home(key),
+                    PageState::Shortcuts { .. } => state.handle_kbd_shortcuts(key),
+                    PageState::PullRequests { .. } => state.handle_kbd_pull_requests(key),
+                };
 
-            if let Some(frame) = state.frame.as_ref() {
-                frame.request_repaint();
-            }
-        });
-
-        let _self = self.clone();
-        inputbot::KeybdKey::RShiftKey.bind(move || {
-            let mut state = _self.data.lock().unwrap();
-            match state.page {
-                PageState::Shortcuts { .. } => {
-                    state.page = PageState::Shortcuts { selected: Some(1) }
+                if let Some(frame) = state.frame.as_ref() {
+                    frame.request_repaint();
                 }
-                _ => return,
-            };
-
-            if let Some(frame) = state.frame.as_ref() {
-                frame.request_repaint();
-            }
-        });
-
-        std::thread::spawn(|| {
-            inputbot::handle_input_events();
+            });
         });
     }
 }
@@ -383,7 +174,7 @@ impl epi::App for App {
 
     fn update(&mut self, ctx: &egui::CtxRef, _frame: &epi::Frame) {
         egui::SidePanel::right("right_panel")
-            .frame(egui::Frame::none().fill(BG))
+            .frame(egui::Frame::none().fill(style::BG))
             .default_width(30.0)
             .max_width(30.0)
             .min_width(30.0)
@@ -401,7 +192,7 @@ impl epi::App for App {
                         let mut frame = egui::Frame::none();
                         frame.margin = egui::Vec2::new(5.0, padding);
                         if cmd == &"JOIN" {
-                            frame = frame.stroke(egui::Stroke::new(STROKE, FG));
+                            frame = frame.stroke(egui::Stroke::new(style::STROKE, style::FG));
                         };
 
                         frame.show(ui, |ui| {
@@ -415,7 +206,7 @@ impl epi::App for App {
             });
 
         egui::CentralPanel::default()
-            .frame(egui::Frame::none().fill(BG))
+            .frame(egui::Frame::none().fill(style::BG))
             .show(ctx, |ui| {
                 let app_data = self.data.lock().unwrap();
 
@@ -427,8 +218,11 @@ impl epi::App for App {
 
                 let mut content_ui = ui.child_ui(rect, egui::Layout::top_down(egui::Align::Min));
                 match app_data.page {
-                    PageState::Home => app_data.home_pane(&mut content_ui),
-                    PageState::Shortcuts { selected: _ } => app_data.shortcut(&mut content_ui),
+                    PageState::Home => app_data.render_home(&mut content_ui),
+                    PageState::Shortcuts { selected: _ } => {
+                        app_data.render_shortcuts(&mut content_ui)
+                    }
+                    PageState::PullRequests => app_data.render_pull_requests(&mut content_ui),
                 }
                 content_ui.add_space(content_ui.available_height());
             });
