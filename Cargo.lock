@@ -226,7 +226,9 @@ dependencies = [
  "google-calendar3",
  "hyper",
  "hyper-rustls",
+ "input 0.7.1",
  "inputbot",
+ "nix 0.23.1",
  "serde",
  "serde_json",
  "tokio",
@@ -928,6 +930,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "input"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f95640ef27dac9b23ef1fbd760c67a88ce3cab2143a2c18390e71f39c53b815f"
+dependencies = [
+ "bitflags",
+ "input-sys",
+ "libc",
+ "log 0.4.14",
+ "udev",
+]
+
+[[package]]
 name = "input-sys"
 version = "1.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -942,7 +957,7 @@ version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8bc90284daff09ee1df087ae5f74ac724749dc26ed6e9fce7fd69e11e2a44284"
 dependencies = [
- "input",
+ "input 0.6.0",
  "libc",
  "nix 0.22.3",
  "once_cell",
@@ -1230,6 +1245,19 @@ name = "nix"
 version = "0.22.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e4916f159ed8e5de0082076562152a76b7a1f64a01fd9d1e0fea002c37624faf"
+dependencies = [
+ "bitflags",
+ "cc",
+ "cfg-if 1.0.0",
+ "libc",
+ "memoffset",
+]
+
+[[package]]
+name = "nix"
+version = "0.23.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9f866317acbd3a240710c63f065ffb1e4fd466259045ccb504130b7f668f35c6"
 dependencies = [
  "bitflags",
  "cc",
