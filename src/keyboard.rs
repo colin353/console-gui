@@ -21,14 +21,7 @@ pub enum Key {
     Abort,
     Execute,
     Danger,
-    Slider0,
-    Slider1,
-    Slider2,
-    Slider3,
-    Slider4,
-    Slider5,
-    Slider6,
-    Slider7,
+    Slider(usize),
 }
 
 impl Key {
@@ -41,12 +34,12 @@ impl Key {
             187 => Some(Self::Abort),
             188 => Some(Self::Execute),
             70 => Some(Self::Danger),
-            194 => Some(Self::Slider0),
-            193 => Some(Self::Slider1),
-            192 => Some(Self::Slider2),
-            191 => Some(Self::Slider3),
-            190 => Some(Self::Slider4),
-            189 => Some(Self::Slider5),
+            194 => Some(Self::Slider(0)),
+            193 => Some(Self::Slider(1)),
+            192 => Some(Self::Slider(2)),
+            191 => Some(Self::Slider(3)),
+            190 => Some(Self::Slider(4)),
+            189 => Some(Self::Slider(5)),
             _ => None,
         }
     }

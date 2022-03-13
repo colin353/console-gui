@@ -4,6 +4,7 @@ use eframe::{egui, epi};
 use std::sync::{Arc, Mutex};
 
 mod calendar;
+mod command;
 mod github;
 mod keyboard;
 mod style;
@@ -29,12 +30,63 @@ pub struct GitHubNotification {
     action: String,
     repository: String,
     time: i64,
+    url: String,
+}
+
+#[derive(Debug)]
+pub struct PullRequest {
+    title: String,
+    url: String,
+    updated_at: i64,
+    repo_name: String,
+}
+
+pub struct Command {
+    pub name: &'static str,
+    pub selected: bool,
+}
+
+impl Command {
+    pub fn new(name: &'static str) -> Self {
+        Self {
+            name,
+            selected: false,
+        }
+    }
+
+    pub fn selected(name: &'static str) -> Self {
+        Self {
+            name,
+            selected: true,
+        }
+    }
+
+    pub fn empty() -> Self {
+        Self {
+            name: "   ",
+            selected: false,
+        }
+    }
 }
 
 enum PageState {
-    Home,
+    Home(home::HomeState),
     Shortcuts { selected: Option<usize> },
-    PullRequests,
+    PullRequests(pull_requests::PullRequestsState),
+}
+
+impl PageState {
+    fn home() -> Self {
+        Self::Home(home::HomeState::default())
+    }
+
+    fn shortcuts() -> Self {
+        Self::Shortcuts { selected: None }
+    }
+
+    fn pull_requests() -> Self {
+        Self::PullRequests(pull_requests::PullRequestsState::default())
+    }
 }
 
 pub struct AppState {
@@ -43,16 +95,20 @@ pub struct AppState {
     clock: String,
     calendar: Option<CalendarEvent>,
     notifications: Vec<GitHubNotification>,
+    open_prs: Vec<PullRequest>,
+    closed_prs: Vec<PullRequest>,
 }
 
 impl AppState {
     fn new() -> Self {
         Self {
-            page: PageState::Home,
+            page: PageState::home(),
             frame: None,
             clock: Self::clock_time(),
             calendar: None,
             notifications: Vec::new(),
+            open_prs: Vec::new(),
+            closed_prs: Vec::new(),
         }
     }
 
@@ -79,19 +135,11 @@ impl AppState {
         });
     }
 
-    fn commands(&self) -> &[&str] {
+    fn commands(&self) -> Vec<Command> {
         match self.page {
-            PageState::Home => {
-                if let Some(cal) = &self.calendar {
-                    if cal.zoom_url.is_some() {
-                        return &["JOIN", "PRS", "CAL", "SHCT"];
-                    }
-                }
-
-                &["", "PRS", "CAL", "SHCT"]
-            }
-            PageState::Shortcuts { .. } => &["1", "2", "3", "BACK"],
-            PageState::PullRequests => &["IPR", "SUB", "REV"],
+            PageState::Home(_) => self.commands_home(),
+            PageState::Shortcuts { .. } => self.commands_shortcuts(),
+            PageState::PullRequests { .. } => self.commands_prs(),
         }
     }
 }
@@ -114,13 +162,18 @@ impl App {
         });
 
         // Timer to refresh UI
-        let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
+        let mut interval = tokio::time::interval(std::time::Duration::from_millis(200));
         loop {
             interval.tick().await;
             let mut _data = self.data.lock().unwrap();
             if let Some(frame) = _data.frame.as_ref() {
                 frame.request_repaint();
             }
+            match _data.page {
+                PageState::Home(_) => _data.heartbeat_home(),
+                PageState::Shortcuts { .. } => (),
+                PageState::PullRequests { .. } => _data.heartbeat_pulls(),
+            };
             _data.clock = AppState::clock_time();
         }
     }
@@ -131,9 +184,9 @@ impl App {
             keyboard::handle_input_events(move |key| {
                 let mut state = _self.data.lock().unwrap();
                 match state.page {
-                    PageState::Home => state.handle_kbd_home(key),
+                    PageState::Home(_) => state.handle_kbd_home(key),
                     PageState::Shortcuts { .. } => state.handle_kbd_shortcuts(key),
-                    PageState::PullRequests { .. } => state.handle_kbd_pull_requests(key),
+                    PageState::PullRequests(_) => state.handle_kbd_pull_requests(key),
                 };
 
                 if let Some(frame) = state.frame.as_ref() {
@@ -186,18 +239,17 @@ impl epi::App for App {
                 for cmd in app_data.commands() {
                     ui.allocate_ui(egui::Vec2::new(20.0, spacing), |ui| {
                         let padding = 10.0;
-                        let text_space = cmd.len() as f32 * 25.0 + 2.0 * padding;
+                        let text_space = cmd.name.len() as f32 * 25.0 + 2.0 * padding;
 
                         ui.add_space((spacing - text_space) / 2.0);
                         let mut frame = egui::Frame::none();
                         frame.margin = egui::Vec2::new(5.0, padding);
-                        if cmd == &"JOIN" {
+                        if cmd.selected {
                             frame = frame.stroke(egui::Stroke::new(style::STROKE, style::FG));
                         };
 
                         frame.show(ui, |ui| {
-                            let desc =
-                                egui::Label::new(egui::RichText::new(cmd.to_string()).monospace());
+                            let desc = egui::Label::new(egui::RichText::new(cmd.name).monospace());
                             ui.add(desc);
                         });
                         ui.add_space((spacing - text_space) / 2.0);
@@ -218,11 +270,11 @@ impl epi::App for App {
 
                 let mut content_ui = ui.child_ui(rect, egui::Layout::top_down(egui::Align::Min));
                 match app_data.page {
-                    PageState::Home => app_data.render_home(&mut content_ui),
+                    PageState::Home(_) => app_data.render_home(&mut content_ui),
                     PageState::Shortcuts { selected: _ } => {
                         app_data.render_shortcuts(&mut content_ui)
                     }
-                    PageState::PullRequests => app_data.render_pull_requests(&mut content_ui),
+                    PageState::PullRequests(_) => app_data.render_pull_requests(&mut content_ui),
                 }
                 content_ui.add_space(content_ui.available_height());
             });
