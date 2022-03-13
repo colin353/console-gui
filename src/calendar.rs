@@ -95,21 +95,36 @@ pub async fn run(data: Arc<Mutex<AppState>>) {
             best_start = Some(start);
             best_score = score;
 
+            let zoom_url = event
+                .conference_data
+                .as_ref()
+                .and_then(|d| d.entry_points.as_ref())
+                .and_then(|e| {
+                    if !e.is_empty() {
+                        e[0].label.clone()
+                    } else {
+                        None
+                    }
+                })
+                .and_then(|u| {
+                    // Transform in to an xdg-open compatible link
+                    // NOTE: xdg-open compatible link looks like this:
+                    // zoomus://zoom.us/join?action=join&confno=99917074685&pwd=RWprdkxOOEpUUU84ejRVZ09td1NPUT09
+                    let re = regex::Regex::new("/j/(.*?)\\?pwd=(.*?)$").unwrap();
+                    if let Some(cap) = re.captures_iter(&u).next() {
+                        return Some(format!(
+                            "zoomus://zoom.us/join?action=join&confno={}&pwd={}",
+                            &cap[1], &cap[2]
+                        ));
+                    }
+                    None
+                });
+
             output = Some(CalendarEvent {
                 title: event.summary.unwrap_or_else(String::new),
                 time: format!("{} - {}", start.format("%l:%M%P"), end.format("%l:%M%P")),
                 start: start.timestamp() as i64,
-                zoom_url: event
-                    .conference_data
-                    .as_ref()
-                    .and_then(|d| d.entry_points.as_ref())
-                    .and_then(|e| {
-                        if !e.is_empty() {
-                            e[0].label.clone()
-                        } else {
-                            None
-                        }
-                    }),
+                zoom_url,
             });
         }
 

@@ -1,6 +1,6 @@
 use crate::keyboard;
 use crate::style;
-use crate::{AppState, PageState};
+use crate::{command, AppState, Command, PageState};
 
 impl AppState {
     pub fn handle_kbd_shortcuts(&mut self, key: keyboard::Key) {
@@ -13,8 +13,12 @@ impl AppState {
             keyboard::Key::LCD1 => {
                 if let Some(s) = selected {
                     match s {
-                        0 => println!("guvcview"),
-                        1 => println!("slack"),
+                        0 => {
+                            command::run(&["/home/colinwm/bin/fix-video.sh"]);
+                        }
+                        1 => {
+                            command::run(&["slack"]);
+                        }
                         _ => println!("unknown!"),
                     }
                     self.page = PageState::Shortcuts { selected: None };
@@ -25,7 +29,16 @@ impl AppState {
             keyboard::Key::LCD2 => {
                 if let Some(s) = selected {
                     match s {
-                        0 => println!("zoom"),
+                        0 => {
+                            let zoom_url =
+                                std::env::var("ZOOM_URL").expect("must provide $ZOOM_URL env var");
+                            if let Err(e) = std::process::Command::new("xdg-open")
+                                .args([&zoom_url])
+                                .spawn()
+                            {
+                                eprintln!("unable to start zoom! {:?}", e);
+                            }
+                        }
                         1 => println!("something"),
                         _ => println!("unknown!"),
                     }
@@ -37,8 +50,22 @@ impl AppState {
             keyboard::Key::LCD3 => {
                 if let Some(s) = selected {
                     match s {
-                        0 => println!("screenshot"),
-                        1 => println!("shutdown"),
+                        0 => {
+                            if let Err(e) =
+                                std::process::Command::new("/home/colinwm/bin/screenshot.sh")
+                                    .spawn()
+                            {
+                                eprintln!("unable to screenshot! {:?}", e);
+                            }
+                        }
+                        1 => {
+                            if let Err(e) = std::process::Command::new("shutdown")
+                                .args(["-h", "now"])
+                                .spawn()
+                            {
+                                eprintln!("unable to shut down! {:?}", e);
+                            }
+                        }
                         _ => println!("unknown!"),
                     }
                     self.page = PageState::Shortcuts { selected: None };
@@ -46,24 +73,29 @@ impl AppState {
                     self.page = PageState::Shortcuts { selected: Some(2) };
                 }
             }
-            keyboard::Key::Abort => {
+            keyboard::Key::Abort | keyboard::Key::LCD4 => {
                 if selected.is_some() {
                     self.page = PageState::Shortcuts { selected: None };
                 } else {
-                    self.page = PageState::Home;
+                    self.page = PageState::Home(crate::home::HomeState::default());
                 }
-            }
-            keyboard::Key::LCD4 => {
-                // Shortcuts
-                self.page = PageState::Home;
             }
             _ => (),
         }
     }
 
+    pub fn commands_shortcuts(&self) -> Vec<Command> {
+        vec![
+            Command::new("1"),
+            Command::new("2"),
+            Command::new("3"),
+            Command::new("BACK"),
+        ]
+    }
+
     pub fn render_shortcuts(&self, ui: &mut egui::Ui) {
         let shortcuts = &[
-            &["guvcview", "zoom", "screenshot"],
+            &["fix-video.sh", "zoom personal room", "screenshot"],
             &["slack", "something", "shutdown"],
         ];
 
