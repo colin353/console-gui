@@ -9,7 +9,7 @@ struct CalendarAPI {
 
 pub async fn run(data: Arc<Mutex<AppState>>) {
     let search_start = chrono::prelude::Local::now() - chrono::Duration::hours(2);
-    let search_end = search_start + chrono::Duration::days(1);
+    let search_end = search_start + chrono::Duration::days(2);
 
     let cal = CalendarAPI::new().await;
 
@@ -28,12 +28,17 @@ pub async fn run(data: Arc<Mutex<AppState>>) {
 
         let mut output = None;
 
-        let mut best_score = 0.0;
-        let mut best_start = None;
+        let mut best_score = f32::NEG_INFINITY;
+        let mut best_start: Option<chrono::DateTime<_>> = None;
 
         for event in events.items.unwrap() {
+            let title = &event.summary.as_deref().unwrap_or("");
+
             // Skip invalid events
-            if event.start.is_none() || event.status.as_deref().unwrap_or("") == "cancelled" {
+            if event.start.is_none()
+                || event.start.as_ref().unwrap().date_time.is_none()
+                || event.status.as_deref().unwrap_or("") == "cancelled"
+            {
                 continue;
             }
             let now = chrono::prelude::Local::now();
@@ -54,14 +59,7 @@ pub async fn run(data: Arc<Mutex<AppState>>) {
 
             // If the event is not today, don't show it
             if now.date() != start.date() {
-                continue;
-            }
-
-            // Show the soonest upcoming event
-            if let Some(b) = best_start {
-                if start > b {
-                    continue;
-                }
+                //continue;
             }
 
             // Score the event. Show the most important upcoming event if there are two
@@ -70,25 +68,31 @@ pub async fn run(data: Arc<Mutex<AppState>>) {
             // Shorter meetings should be prioritized above longer ones
             score -= (end - start).num_minutes() as f32 / 30.0;
 
-            let user = std::env::var("USER").expect("must provide $USER env var");
-
             if let Some(attendees) = event.attendees {
                 for attendee in attendees {
-                    if let Some(email) = attendee.email {
-                        if email.starts_with(&format!("{}@", user)) {
-                            if let Some(status) = attendee.response_status {
-                                if status == "accepted" {
-                                    score += 5.0;
-                                } else if status == "declined" {
-                                    score -= 100.0;
-                                }
+                    if attendee.self_.is_some() {
+                        if let Some(status) = attendee.response_status {
+                            if status == "accepted" {
+                                score += 5.0;
+                            } else if status == "declined" {
+                                continue;
+                            } else if status == "needsAction" || status == "tentative" {
+                                score -= 10.0;
                             }
                         }
                     }
                 }
             }
 
-            if best_start.is_some() && best_score > score {
+            if best_start.is_some() && best_start.unwrap().timestamp() < start.timestamp() {
+                continue;
+            }
+
+            // Two events starting at the same time, but one is better
+            if best_start.is_some()
+                && best_start.unwrap().timestamp() == start.timestamp()
+                && best_score > score
+            {
                 continue;
             }
 
@@ -121,9 +125,9 @@ pub async fn run(data: Arc<Mutex<AppState>>) {
                 });
 
             output = Some(CalendarEvent {
-                title: event.summary.unwrap_or_else(String::new),
+                title: event.summary.unwrap_or_default(),
                 time: format!("{} - {}", start.format("%l:%M%P"), end.format("%l:%M%P")),
-                start: start.timestamp() as i64,
+                start: start.timestamp(),
                 zoom_url,
             });
         }

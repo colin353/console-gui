@@ -10,7 +10,7 @@ pub async fn run(data: Arc<Mutex<AppState>>) {
 
     let pat = std::env::var("PAT").expect("must provide $PAT env var");
 
-    let auth = base64::encode(format!("colinwm:{}", pat).into_bytes());
+    let auth = base64::encode(format!("colinwm:{pat}").into_bytes());
 
     let https = hyper_rustls::HttpsConnector::with_native_roots();
     let client = hyper::Client::builder().build(https);
@@ -20,7 +20,7 @@ pub async fn run(data: Arc<Mutex<AppState>>) {
         let req = Request::builder()
             .uri("https://api.github.com/notifications?participating=true&per_page=100")
             .header("Accept", "application/vnd.github.v3+json")
-            .header("Authorization", format!("Basic {}", auth))
+            .header("Authorization", format!("Basic {auth}"))
             .header("User-Agent", "colinwm")
             .body(hyper::Body::empty())
             .unwrap();
@@ -69,6 +69,11 @@ pub async fn run(data: Arc<Mutex<AppState>>) {
                 if url.contains("/pulls/") {
                     url = url.replace("/pulls/", "/pull/");
                 }
+
+                if url.is_empty() {
+                    continue;
+                }
+
                 notifications.push(GitHubNotification {
                     title: notification["subject"]
                         .get("title")
@@ -92,7 +97,7 @@ pub async fn run(data: Arc<Mutex<AppState>>) {
 
 pub async fn pulls(data: Arc<Mutex<AppState>>) {
     let pat = std::env::var("PAT").expect("must provide $PAT env var");
-    let auth = base64::encode(format!("colinwm:{}", pat).into_bytes());
+    let auth = base64::encode(format!("colinwm:{pat}").into_bytes());
     let https = hyper_rustls::HttpsConnector::with_native_roots();
     let client = hyper::Client::builder().build(https);
 
@@ -101,7 +106,7 @@ pub async fn pulls(data: Arc<Mutex<AppState>>) {
         let req = Request::builder()
             .uri("https://api.github.com/search/issues?q=is:pr%20author:colinwm%20is:open")
             .header("Accept", "application/vnd.github.v3+json")
-            .header("Authorization", format!("Basic {}", auth))
+            .header("Authorization", format!("Basic {auth}"))
             .header("User-Agent", "colinwm")
             .body(hyper::Body::empty())
             .unwrap();
@@ -127,7 +132,7 @@ pub async fn pulls(data: Arc<Mutex<AppState>>) {
         let req = Request::builder()
             .uri("https://api.github.com/search/issues?q=is:pr%20author:colinwm%20is:closed")
             .header("Accept", "application/vnd.github.v3+json")
-            .header("Authorization", format!("Basic {}", auth))
+            .header("Authorization", format!("Basic {auth}"))
             .header("User-Agent", "colinwm")
             .body(hyper::Body::empty())
             .unwrap();
