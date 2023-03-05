@@ -25,6 +25,7 @@ pub struct CalendarEvent {
     zoom_url: Option<String>,
 }
 
+#[derive(Debug)]
 pub struct GitHubNotification {
     title: String,
     action: String,
