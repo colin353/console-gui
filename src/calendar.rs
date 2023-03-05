@@ -59,7 +59,7 @@ pub async fn run(data: Arc<Mutex<AppState>>) {
 
             // If the event is not today, don't show it
             if now.date() != start.date() {
-                //continue;
+                continue;
             }
 
             // Score the event. Show the most important upcoming event if there are two
